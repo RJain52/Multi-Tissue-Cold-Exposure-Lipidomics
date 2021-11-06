@@ -1,0 +1,568 @@
+---
+title: "2021_0825_RT_vs_Cold_data_cleanup"
+author: "Raghav Jain"
+date: "08/25/2021"
+output: html_document
+---
+
+This code is for processing of raw LC/MS data from the publication:
+
+
+Data was collected using reverse-phase liquid chromatography mass spectrometry as described in the publication. Basic understanding of collection process is highly recommended before use of this script.
+
+This code leads through one data files as an example. All other data files are freely available for users to independently process.
+
+Code is made freely available to the community by the Simcox Lab. Please contact the developer, Raghav Jain (jainragh52@gmail.com) with any questions.
+
+# Load packages
+```{r}
+if(!require(tidyverse)){install.packages("tidyverse")}
+if(!require(dplyr)){install.packages("dplyr")}
+if(!require(Cairo)){install.packages("Cairo")}
+```
+
+# Load data
+```{r, message = F}
+list.files("raw_data/profinder_data/Batch01")
+mydata <- read_csv("raw_data/profinder_data/Batch01/2021_0820_Plasma_neg_height.csv")
+
+# Filter out 'Peak Height' data
+Y <- mydata %>% select(grep("Name", names(mydata)), grep("Found", names(mydata)),
+                          grep("Height", names(mydata)))
+```
+
+# Screen for potential duplicates based on lipid name [optional]
+I do not use this to exclude anything, just get an idea of the data.
+```{r, message = F}
+# order rows so those containing the most NAs are last i.e. at the bottom
+Y1 <- Y[order(rowSums(is.na(Y))),]      
+
+# subset out potential duplicates based on name
+Y1.dups <- Y1[duplicated(Y1$`Name`), ]  
+view(Y1.dups)
+```
+Lipid identifications were manually curated in Profinder. There should be minimal duplicate identifications with acyl chain specification, as the user can typically tell based on retention time whether a peak is accurately annotated. If this is untrue, it is recommended to manually inspect the potential duplicate for similar height pattern.
+```{r}
+# Alphabetically arranges lipids in Y1
+Y1 <- Y1 %>% arrange(Name)
+Y1$row_id <- rownames(Y1)
+```
+
+If the heights are systematically lower for one duplicate versus the other but relative sample patterns are the same, it is recommended to manually remove the lower height duplicate. This is based on previous experiences using LipidAnnotator for analysis of QTOF data. User should decide based on their data. It may be fine to keep both 'duplicates' as the lipids could have identical naming but differ a given acyl chain isomer. 
+
+To remove lipid(s), obtain the rownumber from the alphabetically arranged Y1 and impute below. 
+```{r}
+# Type row_id into 'c()' below e.g. c(2, 292, 400)
+rm_lipid_row <- c()
+Y1 = filter(Y1, !row_id %in% rm_lipid_row)
+Y1 <- select(Y1, -row_id)
+```
+There will be further steps to filter out duplicate identifications based on height and RT data. Hence, it is not necessary to remove lipids here.
+
+# Blank subtraction (optional)
+Subtracting the processed blank (PB) height values from samples is optional as it would apply to all samples.
+The primary reason to perform the subtraction is if there are suspected lipid (or other) contaminants that are the main/sole reason for presence of certain peaks, or greatly interfering with accurate ion quantitation of peaks. In such a case, the blank subtraction may help elucidate this by taking height values to ~0. 
+
+To quickly screen for such such a possibility, run the following code. 
+```{r}
+# Specify the name of the PB column below after the subtraction
+a <- as.name(colnames(select(Y1 ,matches("PB")))) # We name our files with 'PB' for blank. 
+print(a)
+
+# Copy this into the second part of the equation below. Make sure it is the PB
+Y1 <- mutate(Y1, sub_height = `Height (avg)` - `[Height] Plasma_PB_1x_neg_080721_093`)
+
+# Set NA values to 0
+Y1$sub_height <- replace_na(Y1$sub_height, 0)
+print(Y1[Y1$sub_height < 0,]$Name)
+
+# If any values are less than 0 in Y1$sub_height, that lipid(s) is noise or a contaminant and excluded
+Y1 <- Y1[!Y1$sub_height < 0,]
+```
+Additionally, it is possible that for some variables, many, but not all, of the samples have height below the PB.
+However, the 'Avg (height)' is still above the PB height. In this case, run the following code to:
+
+-Tabulate the number of instances where PB height is greater than a sample for each variable
+-Add to that the number of times PB is a value but samples have NA values
+
+We are choosing to remove lipids where six or less samples have undetected (NA) values. This is because our total sample size is 12 mice with 2 conditions, room temperature or cold. 12/2 = 6. This is a subjective number and can be changed in the code below. The primary goal is to limit variables that carry through which are unable to be analyzed statistically.
+```{r}
+Y1['PB_comp'] <- 0
+
+# Note that the column values in the below code must be adjusted for different sample sets. 
+# In the second for loop, the numbers should span all sample columns
+
+# Within the if statements, the column specification should equal the column number of PB
+
+for (j in 1:nrow(Y1)){
+  
+  # Specify the sample column number here. for plasma pos, it is 5:16, for plasma neg it is 4:15 
+  for (i in 4:15) {
+     # Specify column number of PB below!!!!! 'Y1[j, #]'. For plasma pos, it is 4, for plasma neg, it is 16
+    if(is.na(Y1[j, 16]) == F && is.na(Y1[j, i]) == F && Y1[j, 16] >= Y1[j,i]){
+      Y1[j,]$PB_comp = Y1[j,]$PB_comp + 1
+    }else if(is.na(Y1[j, 16]) == F && is.na(Y1[j, i]) == T){        
+      Y1[j,]$PB_comp = Y1[j,]$PB_comp + 1
+    }else(Y1[j,]$PB_comp = Y1[j,]$PB_comp)
+  }
+}
+
+# Remove any variables where at least six (half) of the samples have values of NA or less than PB
+print(Y1[Y1$PB_comp >= 6,]$Name)
+Y1 <- Y1[Y1$PB_comp < 6,]
+```
+Another reason to consider blank subtraction is if quantification is being performed. This generally only makes sense if the calibration curve has it's own IS that is also present in the samples, not for external standard curves. In this case, the pB would be subtracted from the calibrant heights as well. 
+
+# Remove extraneous columns
+```{r}
+Y2 <- Y1 %>% select(grep("Name", names(Y1)), grep("pos", names(Y1)),
+                          grep("neg", names(Y1)))
+# Removes PB
+Y3 <- Y2 %>% select(-grep("PB", names(Y2)))
+```
+
+# Rename sample names
+Tailor this section to filename. Note that .* means either 'from beginning' or 'to the end'.
+```{r}
+colnames(Y3)
+
+# remove all characters from the beginning of name to the space after 'Height]'
+colnames(Y3) <- gsub(".*Height] ", "", colnames(Y3))
+
+# remove the tissue name and underscore but keep the sample number which corresponds to the mouse
+colnames(Y3) <- gsub("Plasma_", "", colnames(Y3))
+
+# remove everything after the sample/mouse number. Change dilution specification as needed.
+colnames(Y3) <- gsub("_1x.*" , "", colnames(Y3))
+print(colnames(Y3))
+```
+
+# Filtering of variables with missing data [optional]
+Remove lipid variables with less than a certain amount of data availability. This is deprecated as we applied this earlier with blank subtraction. If blank subtraction is not carried out and that section is skipped, this code may be used instead.  
+```{r}
+# Set the minimum number of samples that must have a value for a given lipid
+a = 6
+
+missing.value = as.character()
+for (i in 1:nrow(Y3)){
+  if(table(is.na(Y3[i,]))[1] > a)
+    missing.value[i] = "NO"
+  else(missing.value[i]="YES")
+}
+
+Y3_rm = data.frame(cbind(rownames(Y3), missing.value)) 
+d <- as.numeric(Y3_rm[Y3_rm$missing.value=="YES", 1])
+print(Y3[d,]$Name)
+d_name <- Y3[d,]$Name
+
+Y3 <- Y3[!Y3$Name %in% d_name,]
+```
+
+# Transpose data
+```{r}
+Y3 <- sapply(Y3, as.character)
+Y4 <- t(Y3)
+Y5 <- as_tibble(Y4, rownames = "Name")
+
+Name <- Y3[,1]
+df <- tibble(Name)
+
+df <- df %>% mutate(id = 1) %>% 
+  group_by(Name) %>% 
+  summarise(id = cumsum(id)) %>% 
+  mutate(v2 = paste(Name, id, sep = "_")) %>%
+  mutate(v2 = ifelse(id==1, Name, v2)) 
+
+colnames(Y5)[-1] <- df$v2
+Y6 <- Y5[-1,]
+Y6[,2:ncol(Y6)] <- sapply(Y6[,2:ncol(Y6)], as.numeric) 
+```
+
+# Lipid correlation for duplicate screening [do not use if high number of NA values]
+Correlate lipids. If Rho=1, same peak likely used for height calculation of both lipids. However, if high number of NAs, this will not work. This should bot be an issue if previous NA filtering criteria were used. 
+To allow code to work with many NA are present, a strict exclusion criteria is implemented to limit correlations to lipids with 8/12 samples with data available (75%). This number can be adjusted for different sized data sets.
+```{r}
+# Set the minimum number of samples that must have a value for a given lipid [correlation]
+a = 8
+
+missing.value = as.character()
+for (i in 1:ncol(Y6)){
+  if(table(is.na(Y6[,i]))[1] > a)
+    missing.value[i] = "NO"
+  else(missing.value[i]="YES")
+}
+
+Y6_rm = data.frame(cbind(colnames(Y6), missing.value)) 
+d <- Y6_rm[Y6_rm$missing.value=="YES", 1]
+
+Z <- Y6[,!colnames(Y6) %in% d]   
+Z1 <- Z[,-1] 
+
+# Now run correlation. Pairwise correlations run to compare height.
+Z2 <- Z1[,2:ncol(Z1)]
+z = cor(Z2, use = "pairwise.complete.obs")
+z[lower.tri(z, diag=TRUE)] = NA
+z <- z[,2:ncol(z)]
+z = as.data.frame(as.table(z))
+z = z[order(-abs(z$Freq)),]
+y <- z[!is.na(z$Freq)==T,]
+lipid.dups = y[y$Freq>0.9999,]
+
+lipidup.list = as.vector(lipid.dups$Var2)        # list of likely duplicate lipids (may not be all)
+print(lipidup.list)                           
+```
+
+Determine if list is acceptable to remove duplicates. Consult data frame 'lipidup.list' as well.
+```{r}
+# Adjust which lipids to remove from 'lipidup.list'.  0 = no lipids removed. 
+# For example, if the second and fourth lipids from the list need to be removed but not others:
+# In brackets after lipidup.list, type '[c(2,4)]'
+# Currently, all lipids in list will be removed
+rm_lipid <- lipidup.list[c(1:length(lipidup.list))]
+Y7 <- Y6[,!colnames(Y6) %in% rm_lipid]    
+```
+
+# Add sample information and produce initial output
+```{r}
+list.files()
+
+# This is information on the sample weights for the tissue prior to lipid extraction
+sample_info <- read_csv("raw_data/2021_0825_RTvCold_sample_info.csv")
+
+# Ensure that the sample ID containing column is renamed to 'Name' to match Y7
+colnames(sample_info)[1] <- "Name" # Check for any other sample id discrepancies and specify 
+
+# Specify tissue of interest below
+sample_info <- sample_info[sample_info$Tissue == "Plasma",]
+Y7$Name <- as.numeric(Y7$Name)
+
+lipid_data <- merge(sample_info, Y7, by = "Name")
+```
+
+Verify data looks good in the data frame 'lipid_data' and output initial file for further QC and analysis.
+```{r}
+# rewrite file name below before saving the .csv file to specify correct tissue and ionization
+
+write_csv(lipid_data, "output/initial_curated/2021_0825_plasma_neg_initial.csv")
+rm(list = ls())
+```
+Repeat for other ionization of tissue before continuing.
+
+# Internal standards
+Upload the intially curated positive and negative mode data.
+```{r, message=F}
+list.files("output/initial_curated")
+pos_dat <- read_csv("output/initial_curated/2021_0825_plasma_pos_initial.csv")
+pos_dat$Name <- as.character(pos_dat$Name)
+neg_dat <- read_csv("output/initial_curated/2021_0825_plasma_neg_initial.csv")
+neg_dat$Name <- as.character(neg_dat$Name)
+```
+
+Internal standards (IS) detected. Our IS have either a d7, d9 or d3 that allows the below code to pick out their names.
+Ultimately, the exact names of the IS will need to be in the 'pos_IS' and 'neg_IS' vectors, respectively.
+```{r}
+pos_IS <- colnames(select(pos_dat , matches("(d7)")))
+pos_IS <- append(pos_IS, colnames(select(pos_dat , matches("(d9)"))))
+pos_IS <- append(pos_IS, colnames(select(pos_dat , matches("(d3)")))[1])
+
+pos_IS <- sort(pos_IS)
+
+neg_IS <- colnames(select(neg_dat , matches("(d7)")))
+neg_IS <- append(neg_IS, colnames(select(pos_dat , matches("(d9)"))))
+
+neg_IS <- sort(neg_IS)
+```
+
+Plot internal standards. This is a data check. Rename files to reflect tissue. 
+```{r}
+plot_list <- list()
+for(i in 1:length(pos_IS)){
+  var_name <- paste0("`", as.name(pos_IS[i]), "`")
+  p <- ggplot(data = pos_dat, aes_string(x= "Name", y = sprintf("log10(%s)", var_name))) +
+             geom_boxplot() + scale_y_continuous(limit = c(3, 7)) + ggtitle(pos_IS[i])
+  plot_list[[i]] <- p
+}
+
+CairoPDF("output/IS_graphs/plasma_pos_IS.pdf")
+  for (i in 1:length(pos_IS)) {
+    print(plot_list[[i]])
+  }
+dev.off()
+
+for(i in 1:length(neg_IS)){
+  var_name <- paste0("`", as.name(neg_IS[i]), "`")
+  p <- ggplot(data = neg_dat, aes_string(x= "Name", y = sprintf("log10(%s)", var_name))) +
+             geom_boxplot() + scale_y_continuous(limit = c(3, 7)) + ggtitle(neg_IS[i])
+  plot_list[[i]] <- p
+}
+
+CairoPDF("output/IS_graphs/plasma_neg_IS.pdf")
+  for (i in 1:length(pos_IS)) {
+    print(plot_list[[i]])
+  }
+dev.off()
+```
+It is highly recommended to look at outputted files for anomalies before continuing. If any IS are missing, previous steps in curation may need to be checked to ensure they were followed properly, and the MS data may need to be re-analyzed. 
+
+# IS normalization [optional]
+Highly dependent on data. Highly recommended. 
+This code must be edited appropriately IS present can vary by tissue.
+
+ We are reporting in molar units. These calculations must be done by the user based on their experimental design.  
+
+Positive mode
+Name various IS here. This reduces text below. Take note of missing IS if error.
+```{r}
+print(pos_IS)
+
+AC_p <- pos_dat$`ACar 18:1(d3)`
+CE_p <- pos_dat$`CE 18:1(d7)`
+DG_p <- pos_dat$`DG 15:0_18:1(d7)`
+LPC_p <- pos_dat$`LPC 18:1/0:0(d7)`
+LPE_p <- pos_dat$`LPE 18:1(d7)`
+PC_p <- pos_dat$`PC 15:0_18:1(d7)`
+PE_p <- pos_dat$`PE 15:0_18:1(d7)`
+PG_p <- pos_dat$`PG 15:0_18:1(d7)`
+SM_p <- pos_dat$`SM d18:1_18:1(d9)`
+TG_p <- pos_dat$`TG 15:0_18:1(d7)_15:0`
+```
+
+Positive ionization lipid subclasses without explicit IS are normalized first. This is a common caveat of untargeted runs and hence, the data is considered semi-quantitative.  
+
+Note that the number being multiplied by is the IS at time of injection. See "raw_data/2021_0826_Standard_norm_RTvCold.xlsx" for more information. The positive mode standard amount has been scaled to negative mode injection amount so that the same theoretical amount of material was injected for each mode. This is particularly important for the next step in the curation which compared lipids identified in both modes.  
+```{r}
+pos_dat[,grepl("^BMP" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^BMP" , names(pos_dat))]/PC_p)*66.66
+
+pos_dat[,grepl("^Cer" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^Cer" , names(pos_dat))]/SM_p)*13.37
+
+pos_dat[,grepl("^CL" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^CL" , names(pos_dat))]/PC_p)*66.66
+
+pos_dat[,grepl("^HexCer" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^HexCer" , names(pos_dat))]/SM_p)*13.37
+
+pos_dat[,grepl("^PS" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^PS" , names(pos_dat))]/PC_p)*66.66
+```
+
+```{r}
+pos_dat[,grepl("^ACar" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^ACar" , names(pos_dat))]/AC_p)*10
+
+pos_dat[,grepl("^CE" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^CE" , names(pos_dat))]/CE_p)*166.68
+
+pos_dat[,grepl("^DG" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^DG" , names(pos_dat))]/DG_p)*4.99
+
+pos_dat[,grepl("^LPC" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^LPC" , names(pos_dat))]/LPC_p)*15
+
+pos_dat[,grepl("^LPE" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^LPE" , names(pos_dat))]/LPE_p)*3.36
+
+pos_dat[,grepl("^PC" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^PC" , names(pos_dat))]/PC_p)*66.66
+
+pos_dat[,grepl("^PE" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^PE" , names(pos_dat))]/PE_p)*2.48
+
+pos_dat[,grepl("^PG" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^PG" , names(pos_dat))]/PG_p)*11.65
+
+pos_dat[,grepl("^SM" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^SM" , names(pos_dat))]/SM_p)*13.37
+
+pos_dat[,grepl("^TG" , names(pos_dat))] <- 
+  (pos_dat[,grepl("^TG" , names(pos_dat))]/TG_p)*21.67
+
+```
+
+Negative mode. 
+```{r}
+print(neg_IS)
+
+LPC_n <- neg_dat$`LPC 18:1/0:0(d7)`
+LPE_n <- neg_dat$`LPE 18:1(d7)`
+PA_n <- neg_dat$`PA 15:0_18:1(d7)`
+PC_n <- neg_dat$`PC 15:0_18:1(d7)`
+PE_n <- neg_dat$`PE 15:0_18:1(d7)`
+PG_n <- neg_dat$`PG 15:0_18:1(d7)`
+PI_n <- neg_dat$`PI 15:0_18:1(d7)`
+PS_n <- neg_dat$`PS 15:0_18:1(d7)`
+SM_n <- neg_dat$`SM d18:1_18:1(d9)`
+```
+
+```{r}
+neg_dat[,grepl("^AcylGlcADG", names(neg_dat))] <- 
+  (neg_dat[,grepl("^AcylGlcADG", names(neg_dat))]/PI_n)*3.34
+
+neg_dat[,grepl("^Cer" , names(neg_dat))] <- 
+  (neg_dat[,grepl("^Cer" , names(neg_dat))]/SM_n)*13.37
+
+neg_dat[,grepl("^CL", names(neg_dat))] <- 
+  (neg_dat[,grepl("^CL", names(neg_dat))]/PG_n)*11.65
+
+neg_dat[,grepl("^EtherOxPC", names(neg_dat))] <- 
+  (neg_dat[,grepl("^EtherOxPC", names(neg_dat))]/PC_n)*66.66
+
+neg_dat[,grepl("^EtherPC", names(neg_dat))] <- 
+  (neg_dat[,grepl("^EtherPC", names(neg_dat))]/PC_n)*66.66
+
+neg_dat[,grepl("^EtherPE", names(neg_dat))] <- 
+  (neg_dat[,grepl("^EtherPE", names(neg_dat))]/PE_n)*2.48
+
+neg_dat[,grepl("^FA", names(neg_dat))] <- 
+  (neg_dat[,grepl("^FA", names(neg_dat))]/LPC_n)*15
+
+neg_dat[,grepl("^GlcADG", names(neg_dat))] <- 
+  (neg_dat[,grepl("^GlcADG", names(neg_dat))]/PI_n)*3.34
+
+neg_dat[,grepl("^GM3" , names(neg_dat))] <- 
+  (neg_dat[,grepl("^GM3" , names(neg_dat))]/SM_n)*13.37
+
+neg_dat[,grepl("^HBMP", names(neg_dat))] <- 
+  (neg_dat[,grepl("^HBMP", names(neg_dat))]/PG_n)*11.65
+
+neg_dat[,grepl("^HexCer" , names(neg_dat))] <- 
+  (neg_dat[,grepl("^HexCer" , names(neg_dat))]/SM_n)*13.37
+
+neg_dat[,grepl("^LPA", names(neg_dat))] <- 
+  (neg_dat[,grepl("^LPA", names(neg_dat))]/PA_n)*15
+
+neg_dat[,grepl("^LPG", names(neg_dat))] <- 
+  (neg_dat[,grepl("^LPG", names(neg_dat))]/PG_n)*11.65
+
+neg_dat[,grepl("^LPI", names(neg_dat))] <- 
+  (neg_dat[,grepl("^LPI", names(neg_dat))]/PI_n)*3.34
+
+neg_dat[,grepl("^LPS", names(neg_dat))] <- 
+  (neg_dat[,grepl("^LPS", names(neg_dat))]/PS_n)*1.67
+
+neg_dat[,grepl("^MGDG", names(neg_dat))] <- 
+  (neg_dat[,grepl("^MGDG", names(neg_dat))]/PI_n)*3.34
+
+neg_dat[,grepl("^OxPC", names(neg_dat))] <- 
+  (neg_dat[,grepl("^OxPC", names(neg_dat))]/PC_n)*66.66
+
+neg_dat[,grepl("^OxPE", names(neg_dat))] <- 
+  (neg_dat[,grepl("^OxPE", names(neg_dat))]/PE_n)*2.48
+
+neg_dat[,grepl("^OxPI", names(neg_dat))] <- 
+  (neg_dat[,grepl("^OxPI", names(neg_dat))]/PI_n)*3.34
+
+neg_dat[,grepl("^PEtOH", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PEtOH", names(neg_dat))]/PE_n)*2.48
+
+neg_dat[,grepl("^PMeOH", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PMeOH", names(neg_dat))]/PC_n)*66.66
+
+neg_dat[,grepl("^SHexCer" , names(neg_dat))] <- 
+  (neg_dat[,grepl("^SHexCer" , names(neg_dat))]/SM_n)*13.37
+
+neg_dat[,grepl("^SQDG" , names(neg_dat))] <- 
+  (neg_dat[,grepl("^SQDG" , names(neg_dat))]/PI_n)*3.34
+```
+
+```{r}
+neg_dat[,grepl("^LPC", names(neg_dat))] <- 
+  (neg_dat[,grepl("^LPC", names(neg_dat))]/LPC_n)*15
+
+neg_dat[,grepl("^LPE", names(neg_dat))] <- 
+  (neg_dat[,grepl("^LPE", names(neg_dat))]/LPE_n)*3.36
+
+neg_dat[,grepl("^PA", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PA", names(neg_dat))]/PA_n)*3.33
+
+neg_dat[,grepl("^PC", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PC", names(neg_dat))]/PC_n)*66.66
+
+neg_dat[,grepl("^PE", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PE", names(neg_dat))]/PE_n)*2.48
+
+neg_dat[,grepl("^PG", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PG", names(neg_dat))]/PG_n)*11.65
+
+neg_dat[,grepl("^PI", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PI", names(neg_dat))]/PI_n)*3.34
+
+neg_dat[,grepl("^PS", names(neg_dat))] <- 
+  (neg_dat[,grepl("^PS", names(neg_dat))]/PS_n)*1.67
+
+neg_dat[,grepl("^SM" , names(neg_dat))] <- 
+  (neg_dat[,grepl("^SM" , names(neg_dat))]/SM_n)*13.37
+```
+
+# Combine positive and negative mode, remove redundancies, and output
+Some lipids are identified in both positive and negative ionization. This is most common with phospholipids. 
+First, these common lipids must be identified. Typically, the common lipid with a lower signal from either the positive or negative list is dropped. This is done after manual curation and based on which prior knowledge that certain lipids ionize better in a given mode. This ultimately is expeted to result in better integration of the peak in a given mode.
+```{r}
+# Lipids identified in both modes
+shared <- intersect(colnames(pos_dat)[6:ncol(pos_dat)], 
+                    colnames(neg_dat)[6:ncol(neg_dat)])
+
+n_s <- neg_dat[,shared]
+p_s <- pos_dat[,shared]
+negMode = as.numeric()
+posMode = as.numeric()
+for (i in 1:ncol(n_s)){
+  negMode[i] = round(summary(n_s[[i]])[3],4)
+  posMode[i] = round(summary(p_s[[i]])[3],4)
+}
+
+# Compare semi-quantitative values side-by-side
+common <- cbind(colnames(n_s), negMode, posMode)
+common <- as_tibble(common)
+common[,2:3] <- sapply(common[,2:3], as.numeric)
+
+NegHigh <- common$V1[common[[2]] > common[[3]]]  # higher intensity in negative mode
+PosHigh <- common$V1[common[[3]] > common[[2]]]  # higher intensity in positive mode
+
+# Remember to exclude the variables higher in negative mode from the POSITIVE data frame! And vice-versa
+neg_final <- neg_dat[,!names(neg_dat) %in% PosHigh]
+pos_final <- pos_dat[,!names(pos_dat) %in% NegHigh]
+
+# Double check no common variables remain (IS is fine)
+shared_test <- intersect(colnames(neg_final)[10:ncol(neg_final)], 
+                    colnames(pos_final[10:ncol(pos_final)]))
+print(shared_test)
+
+# Final merged dataset
+pos_merge <- pos_final[,c(1,6:ncol(pos_final))]
+Lipids_Final <- merge(neg_final, pos_merge, by = "Name")
+
+Lipids_Final <- Lipids_Final %>% 
+                  tibble %>% 
+                  select(colnames(Lipids_Final)[1:5], sort(colnames(.)))
+```
+
+# Normalize to starting weight
+For plasma, final units will be pmol/mL or nM blood. For everything else, it is nmol/g tissue. Hence, the below code removes remaining IS columns, then divicdes the pmol lipid data by the appropriate starting material amount to give the final concentration units.
+```{r}
+# Remove IS columns 
+IS_rm <- colnames(select(Lipids_Final, matches("(d7)")))
+IS_rm  <- append(IS_rm, colnames(select(Lipids_Final, matches("(d9)"))))
+IS_rm  <- append(IS_rm , "ACar 18:1(d3)")
+Lipids_Final <- Lipids_Final[,!names(Lipids_Final) %in% IS_rm]
+
+# Normalization to weight/starting volume.
+Lipids_Final_norm <- Lipids_Final
+
+# For plasma, convert uL to mL. Skip for all other tissue.
+Lipids_Final$Weight <- Lipids_Final$Weight/1000
+
+Lipids_Final_norm[,6:ncol(Lipids_Final_norm)] <-   
+  Lipids_Final[,6:ncol(Lipids_Final)]/Lipids_Final$Weight
+
+# Change NA values to 0
+Lipids_Final_norm[is.na(Lipids_Final_norm)] <- 0
+
+Lipids_Final_norm$Name <- as.numeric(Lipids_Final_norm$Name)
+Lipids_Final_norm  <- Lipids_Final_norm[order(Lipids_Final_norm$Name),]
+
+write_csv(Lipids_Final_norm, "output/final_curated/2021_0917_plasma.csv")
+
+rm(list=ls())
+```

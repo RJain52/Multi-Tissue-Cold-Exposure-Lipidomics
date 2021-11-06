@@ -1,0 +1,346 @@
+---
+title: "2021_0831_data_analysis"
+author: "Raghav Jain"
+date: "8/30/2021"
+output: html_document
+---
+
+This code is associated with the manuscript: 
+
+The below code was used to perform statistical analyses and create major figures for the paper. The data used for this analysis was pre-processed as described in the 'data_processing' code in the folder of that name. The example data being used is from plasma, but data for all tissue is also available in the 'raw data' folder.
+
+Please send any questions to the developer of the script, Raghav Jain (jainragh52@gmail.com). Thank you to all the package developers and the broader R community for supporting open access and code availability.
+
+# Load packages
+```{r, message=FALSE, warning=FALSE, echo = F}
+if(!require(tidyverse)){install.packages("tidyverse")}
+if(!require(ggpubr)){install.packages("ggpubr")}
+if(!require(reshape)){install.packages("reshape")}
+if(!require(rstatix)){install.packages("rstatix")}
+if(!require(ggrepel)){install.packages("ggrepel")}
+if(!require(ggsci)){install.packages("ggsci")}
+if(!require(scales)){install.packages("scales")}
+if(!require(heatmaply)){install.packages("heatmaply")}
+if(!require(factoextra)){install.packages("factoextra")}
+if(!require(RColorBrewer)){install.packages("RColorBrewer")}
+if(!require(outliers)){install.packages("outliers")}
+#show_col(pal_npg("nrc")(10))
+#get_palette(palette = "npg", 5)
+```
+
+# PCA
+```{r}
+mydata <- read_csv("raw_data/Lipid_data_all.csv")
+mydata[mydata == 0] <- NA 
+
+Y3 <- mydata[!mydata$Tissue == "Plasma",]
+
+# Set the minimum number of samples that must have a value for a given lipid
+missing.value = as.character()
+for (i in 6:ncol(Y3)){
+  if(table(is.na(Y3[,i]))[1] == 108)
+    missing.value[i] = "NO"
+  else(missing.value[i]="YES")
+}
+
+Y3_rm = data.frame(cbind(colnames(Y3), missing.value)) 
+d <- Y3_rm[Y3_rm$missing.value=="YES", 1]
+
+Y4 <- Y3[,!colnames(Y3) %in% d]
+
+# RT
+Y5 <- Y4[Y4$Temp == 'RT',]
+P <- log2(Y5[,6:ncol(Y5)]) 
+P <- P[,colSums(is.na(P))<nrow(P)]
+res_pca <- prcomp(na.omit(P), center = T, scale. = TRUE)
+fviz_eig(res_pca)
+
+fviz_pca_ind(res_pca, title = 'RT',
+             label = "none", habillage = Y5$Tissue, 
+             addEllipses = T) + 
+    theme(legend.position = "right", 
+          text = element_text(size = 12, family = "Arial")) +
+    theme_minimal()
+```
+
+
+# Heatmap comparing identified lipids
+Heatmap Groups are:
+-Acylcarnitines
+-Cholesteryl Esters
+-Fatty acids: FFA, FAHFA
+-Glycerolipids: TAG, DAG
+-Glycerophospholipids: PC,PE, PI, PS, PA, PG, (hemi-)BMP, CL, LPI, LPC, LPE, Ether-PC, Ether-PE
+-Sphingolipids: SM, ceramides, hexosyl, Gangliosides, sulfatide
+
+```{r}
+Y <- read_csv("raw_data/identified_lipids.csv")
+```
+
+Visualize and output heatmap. Rename for different tissue. May need to change 'Blues' ramp for different tissue.
+```{r}
+Y0 <- Y[complete.cases(Y),]
+Y1 <- aggregate(Y0[,5:ncol(Y0)], by=list("Lipid Class" = Y0$Class), FUN=sum)
+
+# Reorder is based on PCA clustering
+names(Y1)
+Y1 <- Y1[c("Lipid Class", "Plasma", "BAT",
+           "eWAT", "iWAT", "GSM", "Heart",
+           "Liver", "Kidney", "Intestine", 
+           "Lung")]
+heatmaply(x = Y1[,2:ncol(Y1)], labRow = Y1$`Lipid Class`, color = Blues(180), 
+          Colv = F, fontsize_row = 12, fontsize_col = 12, 
+          font = list(family = "Arial", face = 2),
+          cellnote = Y1[,2:ncol(Y1)], cellnote_size = 14, 
+          cellnote_textposition = "middle center", 
+          show_dendrogram = F, xlab = "Tissue", ylab = "Lipid Class", 
+          main = "Tissue Lipidomics", 
+          height = 650, width = 800, 
+          file = NULL) 
+```
+
+# Segmented Bar Graphs
+```{r,  message=FALSE}
+Y <- read_csv("raw_data/identified_lipids.csv")
+Y2 <- Y[,c(2,4:ncol(Y))]
+Y2[is.na(Y2)] <- 0
+Y3 <- reshape2::melt(Y2, id=c("Abbreviation","Bars"))
+
+classes <- split(Y3, Y3$Bars)
+
+# Tells where in the str 'classes' each class is
+summary(classes)
+
+# Create palette of 74 colors
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+my_color <- col_vector[!grepl('FF', col_vector)]                                  
+# removes the yellow colors
+```
+Plot sphingolipid breakdown as an example.
+```{r}
+temp <- classes[[8]]
+p0 <- ggplot(temp, aes(x = variable, y = value, fill = Abbreviation)) +
+            geom_bar(stat = "identity", position = "stack")
+  
+p1 <- ggpar(p0, palette = my_color,legend = "right", legend.title = "Lipid Species", 
+                  title = names(classes)[8], xlab = "Tissue", ylab = "Number of Species")
+p1 + theme_bw()
+```
+
+# Volcano Plots
+```{r}
+Z <- read_csv("raw_data/2021_0917_plasma.csv")
+Z[Z==0] <- NA
+X = matrix(NA, ncol = 3, nrow = ncol(Z))
+colnames(X) <- c("FC", "p", "sig")
+rownames(X) <- colnames(Z)
+  
+p_value = as.numeric()
+
+# Start at the lipid data for loop. Calculate fold change and p-values for comparison.
+for (j in 6:ncol(Z)) {                               
+    X[j,1] = round(colMeans(Z[Z$Temp == "Cold",j],na.rm = T)/colMeans(Z[Z$Temp == "RT",j], 
+                                                                      na.rm = T), 4)
+    
+      if(table(is.na(Z[Z$Temp == "Cold",j]))[1] > 1 && table(is.na(Z[Z$Temp == "RT",j]))[1] > 1){
+        X[j,2] = round(-log10(t.test(Z[Z$Temp == "Cold",j], Z[Z$Temp == "RT",j], 
+                                     na.rm = T)$p.val), 4)
+      }else(X[j,2] == 0.9)
+      
+      if(table(is.na(Z[Z$Temp == "Cold",j]))[1] > 1 && table(is.na(Z[Z$Temp == "RT",j]))[1] > 1){
+        p_value[j] = t.test(Z[Z$Temp == "Cold",j], Z[Z$Temp == "RT",j], na.rm = T)$p.val
+      }else(p_value[j] == 0.9)
+}
+  
+# FDR correction applied  
+op <- p.adjust(p_value[6:length(p_value)], method = 'fdr')
+Y1 <- data.frame(X[6:nrow(X),])
+
+# Set FDR significance cutoff
+Y1$sig <- op < 0.300001
+  
+Y1$FC <- log2(Y1$FC)
+  
+Y1$diffexpressed <- "NO"
+Y1$diffexpressed[Y1$FC > 0.0 & Y1$sig == T] <- "UP"
+Y1$diffexpressed[Y1$FC < 0.0 & Y1$sig == T] <- "DOWN"
+  
+Y1$diffexpressed = factor(Y1$diffexpressed, levels = c("NO", "UP", "DOWN"))
+  
+Y1$delabel <- NA
+Y1$delabel[Y1$diffexpressed != "NO"] <- rownames(Y1)[Y1$diffexpressed != "NO"]
+  
+toMatch <- c("ACar", "Cer")
+  
+Y1$delabel <- ifelse(grepl(paste(toMatch,collapse="|"), 
+                             Y1$delabel),Y1$delabel,NA)
+  
+Y1$label <- NA
+Y1$label[Y1$sig == T] <- "sig"
+Y1$label[Y1$sig == F] <- "not"
+  
+ggplot(data=Y1, aes(x=FC, y=p, col=diffexpressed)) +
+        geom_point() + 
+        scale_x_continuous(limits = c(max(Y1$FC)*-1.1, max(Y1$FC)*1.1)) +
+        scale_y_continuous(limits = c(0, max(Y1$p*1.1))) +
+        theme_minimal() +
+        geom_text_repel(aes(label=delabel), color = "black", min.segment.length = 0, 
+                        size = 2.5, family = "Arial", max.overlaps = Inf) +
+        scale_color_manual(values=c("grey70", "#E64B35FF", "#4DBBD5FF"), 
+                           name = "Change in Cold",
+                           breaks = c("NO", "UP", "DOWN"), 
+                           labels = c("FDR > 0.30", "Increased", "Decreased")) +
+        ggtitle("Plasma lipid changes") +
+        ylab("-log10(p-value)") +
+        xlab("log2(Fold change [cold/RT])") +
+        theme(legend.position = "right", text = element_text(size = 12, 
+                                                             family = "Arial"))
+```
+
+# Acylcarnitine bar graphs
+Acar 16:0, 18:0, 18:1
+```{r}
+Z <- read_csv("raw_data/2021_0917_plasma.csv")
+mdat <- Z
+mdat[mdat == 0] <- NA
+ 
+mdat1 <- cbind("Condition" = mdat$Temp, mdat[,grep("ACar", colnames(mdat))])
+mdat1 <- mdat1[,colSums(is.na(mdat1)) < nrow(mdat1)]
+mdat2 <- reshape2::melt(mdat1, id="Condition")
+mdat2$Condition <- factor(mdat2$Condition, levels = c("RT", "Cold"))
+mdat2$variable <- factor(mdat2$variable)
+colnames(mdat2)[2] <- "Lipid"
+mdat2$Lipid <- gsub("ACar", "", mdat2$Lipid)
+mdat2 <- na.omit(mdat2)
+  
+p0 <- ggbarplot(mdat2, x = "Lipid", y = "value",
+            add = c("mean_sd", "dotplot"), color = "Condition", fill = "Condition", 
+            add.params = list(width = 0.35,
+                              binwidth = .015*max(mdat2$value, na.rm = T)),
+            alpha = 0.5, position = position_dodge(0.8), size = 0.15) +
+            scale_y_continuous(limits = c(0.00, 1.15*max(mdat2$value, na.rm = T)),
+                               expand = c(0,0))
+
+p1 <- ggpar(p0, palette = "npg", legend = "right", legend.title = "Temperature", 
+              title = "Plasma Acylcarnitines",  
+              xlab = "Acylcarnitine", ylab = "pmol lipid/mg tissue") 
+  
+  stat.test <- mdat2 %>%
+  group_by(Lipid) %>%
+  na.omit() %>%
+  t_test(value ~ Condition) %>%
+  adjust_pvalue(method = "none") %>%
+  add_significance("p")
+  
+  stat.test$p.adj.signif <- stat.test$p.signif
+  stat.test <- stat.test %>%
+                  na.omit() %>%
+                  add_xy_position(fun = "mean_sd", "Lipid", dodge = 0.8) 
+
+p1 + stat_pvalue_manual(
+      stat.test, label = "p.signif", tip.length = 0.02, hide.ns = T)
+
+```
+
+# Correlation plot - ACar 18:0, 18:1, 16:0
+```{r}
+mydata <- read_csv("raw_data/Lipid_data_all.csv")
+
+mdat1 <- cbind(mydata[mydata$Tissue == 'Liver',1:5],
+                 mydata[mydata$Tissue == 'Liver',]$`ACar 18:0`)
+colnames(mdat1)[6] <- "Liver_AC"
+mdat1$Plasma_AC <-  mydata[mydata$Tissue == 'Plasma',]$`ACar 18:0`
+mdat1$BAT_AC <- mydata[mydata$Tissue == 'BAT',]$`ACar 18:0`
+
+mdat1$Temp <- factor(mdat1$Temp, levels = c("RT", "Cold"))
+```
+
+```{r}
+# Liver
+sp <- ggscatter(mdat1, x = "Liver_AC", y = "Plasma_AC", 
+                color = "Temp", add = "reg.line",
+                add.params = list(color = "black", fill = "lightgray"),
+                conf.int = TRUE)
+
+# Add correlation coefficient
+sp + stat_cor(method = "pearson", 
+                 label.x = min(mdat1$Liver_AC, na.rm = T), 
+                 label.y = max(mdat1$Plasma_AC, na.rm = T), 
+                 p.accuracy = 0.001, r.accuracy = 0.01) + 
+        scale_colour_manual(name="Temperature",
+                            labels=c("RT","Cold"),
+                            values = c("#E64B35FF", "#4DBBD5FF")) +
+        xlab("Liver (pmol/mg)") +
+        ylab("Plasma (pmol/mL)") + ggtitle("Acylcarnitine 18:2") +
+        theme_minimal() +
+        theme(legend.position = "right", 
+              text = element_text(size = 12, family = "Arial"),
+              axis.line = element_line(colour = "black"))
+
+# BAT
+sp <- ggscatter(mdat1, x = "BAT_AC", y = "Plasma_AC", 
+                color = "Temp", add = "reg.line",
+                add.params = list(color = "black", fill = "lightgray"),
+                conf.int = TRUE)
+
+sp +  stat_cor(method = "pearson", 
+                label.x = min(mdat1$BAT_AC, na.rm = T), 
+                label.y = max(mdat1$Plasma_AC, na.rm = T), 
+                p.accuracy = 0.001, r.accuracy = 0.01) +
+        scale_colour_manual(name="Temperature", 
+                      labels=c("RT","Cold"), 
+                      values = c("#E64B35FF", "#4DBBD5FF")) +
+        xlab("BAT (pmol/mg)") + 
+        ylab("Plasma (pmol/mL)") + 
+        ggtitle("Acylcarnitine 18:2") +
+        theme_minimal() +
+        theme(legend.position = "right", 
+              text = element_text(size = 12, family = "Arial"),
+              axis.line = element_line(colour = "black"))
+```
+
+# Acylcarnitine 18:1 Regressions
+Data is log2 transformed, mean centered, and sd scaled.
+Mouse 8 will continue to be excluded. Only lipids with values for all remaining samples regressed.
+
+Below is example code for a regression predicting plasma ACar 18:1 with BAT ACar 18:1. 
+```{r}
+mdat <- read_csv("raw_data/Lipid_data_all.csv")
+mdat[mdat==0] <- NA
+
+Z <- mdat[mdat$Tissue == "Plasma",] 
+P <- Z[c(1:7, 9:12),] # Exclude mouse 8 - plasma outlier
+
+# specify y-variable to be predicted
+y_var <- scale(log2(P$`ACar 18:1`), center = TRUE, scale = TRUE)
+Cond1 <- P$Temp
+Z1 <- mdat[mdat$Tissue == "BAT",] 
+Z1[Z1==0] <- NA
+B <- Z1[c(1:7, 9:12),]
+x_var <- scale(log2(B$`ACar 18:1`), center = TRUE, scale = TRUE)
+
+
+my_lm <- lm(y_var ~ Cond1 + x_var)
+
+lipid <- "ACar 18:1"
+tissue <- "BAT"
+        
+y_int <- summary(my_lm)$coefficients[1,1]
+beta_RT <- summary(my_lm)$coefficients[2,1]
+beta_lipid <- summary(my_lm)$coefficients[3,1]
+        
+p_y_int <- summary(my_lm)$coefficients[1,4]
+p_RT <- summary(my_lm)$coefficients[2,4]
+p_lipid <- summary(my_lm)$coefficients[3,4]
+    
+adj_r_sq <- summary(my_lm)$adj.r.sq
+    
+final_data <- cbind(lipid, tissue, y_int, beta_RT,
+                          beta_lipid, p_y_int, p_RT, 
+                          p_lipid, adj_r_sq)
+
+final_data <- as_tibble(final_data)
+```
+

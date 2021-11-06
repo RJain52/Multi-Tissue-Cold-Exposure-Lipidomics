@@ -1,0 +1,51 @@
+Lipid,Abbreviation,Class,Bars,BAT,eWAT,GSM,Heart,Intestine,iWAT,Kidney,Liver,Lung,Plasma
+Acylcarnitine,AC,Acylcarnitines,Acylcarnitines,11,0,17,26,16,2,19,8,19,11
+Acylglucuronosyldiacylglycerol,acyl-GlcDAG,Glycerolipids,Glycerolipids,0,1,1,0,0,1,0,0,0,0
+Bismonoacylglycerophosphate,BMP,Glycerophospholipids,Glycerophospholipids,0,0,0,0,2,0,2,2,0,1
+Cardiolipin,CL,Glycerophospholipids,Glycerophospholipids,51,5,27,31,26,7,58,32,23,0
+Ceramide alpha-hydroxy fatty acid-dihydrosphingosine,Cer[ADS],Sphingolipids,Sphingolipids,9,8,0,0,0,5,9,0,7,0
+Ceramide alpha-hydroxy fatty acid-phytospingosine,Cer[AP],Sphingolipids,Sphingolipids,7,0,0,0,0,0,9,0,1,0
+Ceramide alpha-hydroxy fatty acid-sphingosine,Cer[AS],Sphingolipids,Sphingolipids,7,7,0,0,0,3,4,0,2,0
+Ceramide beta-hydroxy fatty acid-dihydrosphingosine,Cer[BDS],Sphingolipids,Sphingolipids,1,2,0,0,0,3,2,0,1,0
+Ceramide beta-hydroxy fatty acid-sphingosine,Cer[BS],Sphingolipids,Sphingolipids,1,0,0,0,0,0,0,0,0,0
+Ceramide Esterified omega-hydroxy fatty acid-dihydrosphingosine,Cer[EODS],Sphingolipids,Sphingolipids,4,2,0,0,0,3,0,0,0,0
+Ceramide Esterified omega-hydroxy fatty acid-sphingosine,Cer[EOS],Sphingolipids,Sphingolipids,3,0,0,0,0,0,0,0,0,0
+Ceramide non-hydroxyfatty acid-dihydrosphingosine,Cer[NDS],Sphingolipids,Sphingolipids,10,6,0,1,0,7,8,0,6,0
+Ceramide non-hydroxyfatty acid-phytospingosine,Cer[NP],Sphingolipids,Sphingolipids,0,3,0,0,0,0,0,0,0,0
+Ceramide non-hydroxyfatty acid-sphingosine,Cer[NS],Sphingolipids,Sphingolipids,6,7,5,13,5,6,12,14,9,10
+Cholesteryl ester,CE,Cholesteryl esters,Cholesteryl esters,0,0,0,0,0,0,0,0,0,6
+Diacylglycerol,DAG,Glycerolipids,Glycerolipids,8,14,2,3,8,10,10,10,10,0
+Ether-linked oxidized phosphatidylcholine,Eox-PC,Glycerophospholipids,Ether lipids,0,0,0,0,0,0,1,0,0,0
+Ether-linked phosphatidylcholine,EPC,Glycerophospholipids,Ether lipids,11,5,9,20,20,4,28,6,12,17
+Ether-linked phosphatidylethanolamine,EPE,Glycerophospholipids,Ether lipids,47,28,31,45,43,35,46,28,57,30
+Fatty acid ester of hydroxyl fatty acid,FAHFA,Fatty acids,Fatty acids,8,19,5,4,9,18,8,7,6,7
+Free fatty acid,FFA,Fatty acids,Fatty acids,16,18,8,9,15,16,14,9,14,13
+Ganglioside GM3,GM3,Sphingolipids,Sphingolipids,0,0,1,6,0,0,0,1,4,0
+Glucuronosyldiacylglycerol,GlcDAG,Glycerolipids,Glycerolipids,4,0,0,1,0,1,0,1,1,0
+Hemibismonoacylglycerophosphate,hemi-BMP,Glycerophospholipids,Glycerophospholipids,0,0,1,6,0,0,2,2,7,0
+Hexosylceramide alpha-hydroxy fatty acid-phytospingosine,HexCer[AP],Sphingolipids,Sphingolipids,4,1,0,0,0,2,5,0,0,0
+Hexosylceramide non-hydroxyfatty acid-dihydrosphingosine,HexCer[NDS],Sphingolipids,Sphingolipids,7,5,0,0,0,17,9,0,8,0
+Hexosylceramide non-hydroxyfatty acid-sphingosine,HexCer[NS],Sphingolipids,Sphingolipids,10,0,8,5,6,3,5,14,6,13
+Lysophophatidylcholine,LPC,Glycerophospholipids,Lysophospholipids,31,11,14,26,31,16,34,34,40,44
+Lysophosphatidic acid,LPA,Glycerophospholipids,Lysophospholipids,0,0,0,1,4,0,1,1,0,0
+Lysophosphatidylethanolamine,LPE,Glycerophospholipids,Lysophospholipids,14,5,5,10,16,5,16,16,17,9
+Lysophosphatidylglycerol,LPG,Glycerophospholipids,Lysophospholipids,4,0,2,4,8,0,7,7,12,0
+Lysophosphatidylinositol,LPI,Glycerophospholipids,Lysophospholipids,9,2,3,7,12,2,12,11,5,4
+Lysophosphatidylserine,LPS,Glycerophospholipids,Lysophospholipids,5,1,1,2,5,0,5,5,5,0
+Monogalactosyldiacylglycerol,MGDG,Glycerolipids,Glycerolipids,0,0,0,0,0,1,0,0,0,0
+Oxidized phosphatidylcholine,ox-PC,Glycerophospholipids,Glycerophospholipids,0,0,0,0,0,0,0,1,0,1
+Oxidized phosphatidylethanolamine,ox-PE,Glycerophospholipids,Glycerophospholipids,0,0,0,0,0,0,0,0,1,0
+Oxidized phosphatidylinositol,ox-PI,Glycerophospholipids,Glycerophospholipids,0,0,0,0,0,0,1,1,0,0
+Oxidized phosphatidylserine,ox-PS,Glycerophospholipids,Glycerophospholipids,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+Phosphatidic acid,PA,Glycerophospholipids,Glycerophospholipids,1,0,0,3,11,0,0,5,2,0
+Phosphatidylcholine,PC,Glycerophospholipids,Glycerophospholipids,90,50,103,107,96,60,105,111,127,99
+Phosphatidylethanol,PtEtOH,Glycerophospholipids,Glycerophospholipids,1,0,0,0,6,3,0,1,1,0
+Phosphatidylethanolamine,PE,Glycerophospholipids,Glycerophospholipids,80,47,65,69,64,46,67,89,60,27
+Phosphatidylglycerol,PG,Glycerophospholipids,Glycerophospholipids,41,7,20,31,52,16,48,49,63,5
+Phosphatidylinositol,PI,Glycerophospholipids,Glycerophospholipids,34,21,33,37,42,27,43,45,35,29
+Phosphatidylmethanol,PtMeOH,Glycerophospholipids,Glycerophospholipids,0,0,0,0,0,0,0,0,1,0
+Phosphatidylserine,PS,Glycerophospholipids,Glycerophospholipids,25,18,19,21,28,17,34,28,54,4
+Sphingomyelin,SM,Sphingolipids,Sphingolipids,34,35,21,39,19,34,44,29,52,29
+Sulfatide,Sulf,Sphingolipids,Sphingolipids,6,0,2,1,1,8,14,0,4,1
+Sulfoquinovosyl diacylglycerol,SQDG,Glycerolipids,Glycerolipids,0,1,0,0,0,0,0,0,0,0
+Triacylglycerol,TAG,Glycerolipids,Glycerolipids,95,163,91,129,122,166,173,145,121,97
