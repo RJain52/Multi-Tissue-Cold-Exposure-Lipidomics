@@ -1,4 +1,4 @@
-<font size="+2">Multi-Tissue-Cold-Exposure-Lipidomics</font>
+#Multi-Tissue-Cold-Exposure-Lipidomics
 Code written by Raghav Jain
 Simcox Lab | Department of Biochemistry| University of Wisconsin-Madison
 
