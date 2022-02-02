@@ -2,7 +2,9 @@
 Code written by Raghav Jain
 
 Simcox Lab - Department of Biochemistry | University of Wisconsin-Madison, Madison, WI, USA
-Related to our manuscript
+
+Related to our manuscript:
+
 **Systematic assessment of lipid profiles identifies novel tissue contributions to the circulating lipid pool in cold exposure** 
 Authors: Raghav Jain, Gina Wade, Irene Ong, Bhagirath Chaurasia, and Judith Simcox
 
