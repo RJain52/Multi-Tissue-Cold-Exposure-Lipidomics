@@ -1,6 +1,5 @@
 # Multi-Tissue Cold Exposure Lipidomics
 Code written by Raghav Jain
-
 Simcox Lab - Department of Biochemistry | University of Wisconsin-Madison, Madison, WI, USA
 
 Related to our manuscript (<https://doi.org/10.1101/2021.11.12.468392>):
