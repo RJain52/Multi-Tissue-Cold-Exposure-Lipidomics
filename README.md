@@ -1,6 +1,6 @@
 # Multi-Tissue Cold Exposure Lipidomics
 
-Code written by Raghav Jain
+Code written by Raghav Jain 
 Simcox Lab | Department of Biochemistry| University of Wisconsin-Madison
 
 "Systematic assessment of lipid profiles identifies novel tissue contributions to the circulating lipid pool in cold exposure" <https://doi.org/10.1101/2021.11.12.468392>
