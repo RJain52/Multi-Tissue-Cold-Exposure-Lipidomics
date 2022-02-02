@@ -6,6 +6,7 @@ Simcox Lab - Department of Biochemistry | University of Wisconsin-Madison, Madis
 Related to our manuscript:
 
 **Systematic assessment of lipid profiles identifies novel tissue contributions to the circulating lipid pool in cold exposure** 
+
 Authors: Raghav Jain, Gina Wade, Irene Ong, Bhagirath Chaurasia, and Judith Simcox
 
 <https://doi.org/10.1101/2021.11.12.468392>
