@@ -268,7 +268,7 @@ pos_IS <- append(pos_IS, colnames(select(pos_dat , matches("(d3)")))[1])
 pos_IS <- sort(pos_IS)
 
 neg_IS <- colnames(select(neg_dat , matches("(d7)")))
-neg_IS <- append(neg_IS, colnames(select(pos_dat , matches("(d9)"))))
+neg_IS <- append(neg_IS, colnames(select(neg_dat , matches("(d9)"))))
 
 neg_IS <- sort(neg_IS)
 ```
