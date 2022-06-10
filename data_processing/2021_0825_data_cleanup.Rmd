@@ -297,7 +297,7 @@ for(i in 1:length(neg_IS)){
 }
 
 CairoPDF("output/IS_graphs/plasma_neg_IS.pdf")
-  for (i in 1:length(pos_IS)) {
+  for (i in 1:length(neg_IS)) {
     print(plot_list[[i]])
   }
 dev.off()
