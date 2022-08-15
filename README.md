@@ -8,7 +8,7 @@ Related to our manuscript in the Journal of Lipid Research (<https://doi.org/10.
 ### Determination of tissue contributions to the circulating lipid pool in cold exposure via systematic assessment of lipid profiles
 Authors: Raghav Jain, Gina Wade, Irene Ong, Bhagirath Chaurasia, and Judith Simcox
 
-# App to visualize data: https://raghavjain.shinyapps.io/coldexposureapp/
+## App to visualize data: https://raghavjain.shinyapps.io/coldexposureapp/
 
 ## Background 
 
