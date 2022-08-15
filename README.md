@@ -8,6 +8,8 @@ Related to our manuscript in the Journal of Lipid Research (<https://doi.org/10.
 ### Determination of tissue contributions to the circulating lipid pool in cold exposure via systematic assessment of lipid profiles
 Authors: Raghav Jain, Gina Wade, Irene Ong, Bhagirath Chaurasia, and Judith Simcox
 
+# App to visualize data: https://raghavjain.shinyapps.io/coldexposureapp/
+
 ## Background 
 
 This project contains the R scripts used to curate and analyze data from our tissue-wide LC-MS based lipidomics assessment of cold-exposed mice. Data was collected on an Agilent 1290 Infinity II liquid chromatograph coupled to an Agilent 6546 quadrupole time-of-flight mass spectrometer. Further methodology can be found in our original research manuscript linked above. 
