@@ -1,0 +1,472 @@
+---
+title: "Simcox Lab Untargeted Data Processing"
+author: "Raghav Jain"
+format: html
+editor: visual
+---
+
+# 1. Summary
+
+This code is used to process the output from Agilent Profinder, or similar software, for peak height following an untargeted LC/MS experiment.
+
+The example provided here is for untargeted lipidomics data collected using C18 reverse-phase liquid chromatography on an Agilent Infinity II coupled to an Agilent 6546 QTOF mass spectrometer. Please refer to our publication on the Github homepage for additional details.
+
+The code has been made freely available to the community by the Simcox Lab. Please contact the developer, Raghav Jain (**jainragh52\@gmail.com**) with any questions.
+
+## Code instructions
+
+Code has been written for file and variable naming as provided in the example. These details will need to be edited for new data sets.
+
+Please read instructions at the top of each code chunk as they will detail the information user must update in the code. Sections requiring user input will have **the text bolded like this.** If there are no instructions, the code chunk can be run immediately following the previous one.
+
+Line citations within the code chunks describe the purpose of the specific line of code.
+
+# 2. Install and load packages
+
+Run this code twice if the packages are being installed for the first time.
+
+```{r, message=FALSE}
+#| echo: false
+if(!require(tidyverse)){install.packages("tidyverse")}
+if(!require(dplyr)){install.packages("dplyr")}
+if(!require(Cairo)){install.packages("Cairo")}
+```
+
+# 3. Load example data
+
+**Type the file path to the folder containing raw data below:**
+
+```{r, message = F}
+mypath <- "raw_data"
+```
+
+```{r, message = F}
+myfiles <- list.files(mypath)   
+print(myfiles)                                         # Lists data files within folder
+```
+
+**Input file number \[in the list\] below.** The example as written is for plasma positive mode data.
+
+```{r, message = F}
+filenumber <- 2
+```
+
+```{r, message = F}
+loadme <- paste0(mypath, "/", myfiles[filenumber])
+mydata <- read_csv(paste0(loadme))                     # This is the file that will be processed
+
+
+# Retain columns with lipid name, number of files with detected peak, and raw Peak Height
+Y <- mydata |> select(grep("Name", names(mydata)
+                            ), 
+                       grep("Found", names(mydata)
+                            ),
+                       grep("Height", names(mydata)
+                            )
+                       )
+```
+
+# 4. Data familiarization (qualitative)
+
+Untargeted lipidomics workflows can result in duplicate annotations. This may result from in-source fragmentation, poor resolution/fragmentation of isomeric lipids, or wide peaks that are erroneously integrated twice (less common).
+
+This code allows for a quick scan to identify potential duplication cases (or any instance with the same lipid name being used for \>1 unique identification).
+
+```{r, message=FALSE}
+# subset out potential duplicates based on name
+potential_dups <- Y |>
+  group_by(Name) |>                           # treats each unique lipid name as a 'group'
+  filter(n() > 1) |>                          # retains all lipid names with listed more than two times
+  arrange(Name, -Found)                       # arranges rows so potential duplicates are next to each other
+
+view(potential_dups)                          # opens data frame to allow for scanning
+# Note: rows are arranged to show duplicates together with the the duplicate containing more NAs second 
+```
+
+```{r}
+rm(potential_dups)
+```
+
+# 5. Blank subtraction
+
+This step can only be run if a processed blank (PB) is run. PB refers to data collected from extract without any sample or internal standard added. It provides info on background contamination.
+
+If the blank file name contains 'PB', the following code will pick it out. The output of the following chunk of code should be the name of the PB file.
+
+```{r, message=FALSE}
+PB <- as.name(names(select(Y, matches("PB")
+                           )
+                    )
+              )
+print(PB)
+```
+
+**If the name printed out is incorrect, replace "PB" in the code chunk below within the select() function.**
+
+Subtract the blank height from the average height. This will remove general background contaminants.
+
+```{r, message=FALSE}
+# Take height values from PB and convert into a vector
+PB_sub <- Y |>
+  select(PB) |>
+  as_vector()
+
+# Create variable ('sub_height') for difference between average sample and PB height 
+Y <- Y |>
+  mutate(sub_height = `Height (avg)` - PB_sub)
+
+# Set NA values to 0 in the sub_height variable
+Y$sub_height[is.na(Y$sub_height)] <- 0
+
+# View any rows with a number below zero means background signal is stronger than samples signal
+print(Y[Y$sub_height < 0,]$Name) 
+```
+
+Remove lipids from background contamination.
+
+```{r, message=FALSE}
+Y <- Y |> filter(!sub_height < 0)
+
+rm(PB, PB_sub)
+```
+
+It is possible that for some variables, many, but not all, of the samples have height below the PB. However, the 'Avg (height)' is still above the PB height. In this case, run the following code to:
+
+-Tabulate the number of instances where PB height is greater than a sample for each lipid -Add the number of instances in which there is a value for PB but sample values are NA
+
+The first condition allows filtering for background detection in samples. The second condition accounts for instances in which the data may be untrustworthy.
+
+```{r, message=FALSE}
+Y['PB_comp'] <- 0                # Creates variable to tabulate instances in which above conditions are met
+```
+
+```{r, message=FALSE}
+names(Y)
+```
+
+**Type the column index of the first sample file in first_sample, and last into last_sample. Type the column index of the PB into PB_index.**
+
+```{r, message=FALSE}
+first_sample <- 5
+last_sample <- 16
+PB_index <- 4
+```
+
+```{r, message=FALSE}
+# going through all rows (variables)
+for (j in 1:nrow(Y)){
+  # going through all sample columns
+  for (i in first_sample:last_sample) {
+    # if a variable PB height is greater than lipid height for any sample and nothing is NA
+    if(is.na(Y[j, PB_index]) == F && is.na(Y[j, i]) == F && Y[j, PB_index] >= Y[j,i]){
+      # add 1 to 'PB_comp'
+      Y[j,]$PB_comp = Y[j,]$PB_comp + 1
+      # or if a variable has PB height but a sample height is NA
+      }else if(is.na(Y[j, PB_index]) == F && is.na(Y[j, i]) == T){        
+        # add 1 to 'PB comp'
+        Y[j,]$PB_comp = Y[j,]$PB_comp + 1
+     # otherwise do not do add anything to PB comp   
+    }else(Y[j,]$PB_comp = Y[j,]$PB_comp)
+    
+  }
+  
+}
+```
+
+**Select the 'PB_comp' cutoff.** I prefer to make the cutoff equal to the number of samples in a particular treatment or condition. For example, we have n=12 samples from 6 mice at RT and 6 mice in cold. Therefore I set my cutoff at n=6.
+
+This allows for detection of changes due to treatment, not background, such as the presence of a lipid that is treatment specific.
+
+```{r, message=FALSE}
+cutoff = 6
+```
+
+Variables that will be removed.
+
+```{r,message=FALSE}
+print(Y[Y$PB_comp >= cutoff,]$Name)     
+```
+
+```{r, message=FALSE}
+Y <- Y |> filter(PB_comp < cutoff)
+```
+
+```{r, message=FALSE}
+rm(i, j, last_sample, first_sample, PB_index, cutoff)
+```
+
+# 6. Data frame cleanup
+
+Now, columns pertaining only to compound name and sample information need to be retained.
+
+**This code might need to be edited if file naming convention from the example files is not followed!!**
+
+```{r, message=FALSE}
+# reorders rows alphabetically and based on average peak height
+Y <- Y |> arrange(Name, -`Height (avg)`)
+
+
+Y <- Y |> select("Name",                      # selects lipid name variable to retain
+                 grep("pos", names(Y)         # retains columns with 'pos' in name (samples only)
+                      ),
+                 grep("neg", names(Y)         # retains columns with 'neg' in name (samples only)
+                      )
+                 )
+# Removes PB
+Y <- Y |> select(-grep("PB", names(Y)         # remove anything related to PB
+                       )
+                 )
+```
+
+Next, file names/column names/sample names can be shortened.
+
+```{r, message=FALSE}
+names(Y)
+```
+
+**This section should be tailored to the individual project.** Note that ".\*" means either 'from beginning' or 'to the end' in regex, which is what gsub() is based on.
+
+```{r, message=FALSE}
+# remove all characters from the beginning of name to the space after 'Height]'
+names(Y) <- gsub(".*Height] ", "", names(Y))
+
+# remove the tissue name and underscore but keep the sample number which corresponds to the mouse
+names(Y) <- gsub("Plasma_", "", names(Y))
+
+# remove everything after the sample/mouse number. Change dilution specification ('20x') as needed.
+names(Y) <- gsub("_20x.*" , "", colnames(Y))
+print(names(Y))
+```
+
+The next step is to transpose the data frame. Prior to this step, lipid variables with the same name (potential isomers, duplicates, triplicates, etc.) must be given unique names. The following code adds a number to differentiate lipid variables in such instances (for example, FA 16:0, FA 16:0_1, etc.).
+
+```{r, warning=FALSE}
+# Create new data frame of variable names
+lipid_names <- Y |> select(Name)
+
+
+lipid_names <- lipid_names |> 
+  mutate(id = 1) |>                   # Create 'id' variable
+  group_by(Name) |>                   # group data based on lipid annotation
+  summarise(id = cumsum(id)) |>       # Add +1 to 'id' for every additional occurrence of the same lipid name
+  mutate(new_name = paste(Name, id, sep = "_")  
+         ) |>                         # Create variable appending lipid name and the 'id'
+  mutate(new_name = ifelse(id==1, Name, new_name)
+         ) |>                         # Replace all lipid names with '_1' in new name with original name
+  ungroup()                           # Remove the underlying grouping based on lipid name
+
+Y <- Y |>
+  mutate(Name = lipid_names$new_name) # Replace old lipid names with new names so all annotations are 'unique'
+
+# Transpose data using new lipid names as column heading and sample names for rows
+Y <- Y |> 
+  pivot_longer(cols= -1) |>
+  pivot_wider(names_from = Name) |>
+  rename(Sample = name)                 # Renames first column to 'Sample'
+
+# Ensure all but first column of data are numeric vectors
+Y[,2:ncol(Y)] <- sapply(Y[,2:ncol(Y)], as.numeric) 
+
+rm(lipid_names)
+```
+
+# 7. Duplicate screening
+
+Height based screening for potential duplicate lipids. These can occur from in-source fragmentation or integration of two separate peaks from the same lipid that were not caught during the Profinder analysis. This can also occur when the same lipid is present with acyl chain level annotation and sum composition during DDA library creation.
+
+In such cases, running a lipid-lipid correlation will identify potential duplicates as the correlation coefficient will be \~1.0 (usually r = 0.998 or greater).
+
+If a high number of NAs are present, this section should be skipped. However, such an occurrence should not be an issue if previous NA filtering criteria were used during blank subtraction.
+
+To allow code to work with a few NAs present, an exclusion criteria can be implemented to limit correlations to lipids with a percentage of samples with data available (75% is default; that means 3/4 samples should have a peak height for a given lipid). This number can be adjusted for different data sets.
+
+**Change the fraction below to use a different % for data availability in calculating correlations**
+
+```{r}
+completeness <- 3/4
+```
+
+```{r, message=FALSE}
+# calculate minimum number of files that must have values for each lipid to use for correlations
+used_data <- completeness*nrow(Y)
+
+missing.value = as.character()
+
+# Check each column (lipid) to ensure 75% samples have numeric value
+for (i in 1:ncol(Y)){
+  if(table(is.na(Y[,i]))[1] > used_data)
+    missing.value[i] = "NO"
+  else(missing.value[i]="YES")
+}
+
+# Tabulate data
+Y_rm = data.frame(cbind(names(Y), missing.value)) 
+
+# Extract names of lipids not reaching 75% threshold
+Y_rm <- Y_rm[Y_rm$missing.value=="YES", 1]
+
+# These are the lipids for which correlations will not be run due to <75% files having numeric peak heights
+print(Y_rm)
+```
+
+```{r, message=FALSE}
+# Remove lipids not making threshold; also remove sample name column
+Z <- Y |>
+  select(!Y_rm, -Sample)
+
+
+# Pairwise correlations 
+Z = cor(Z[,2:ncol(Z)], use = "pairwise.complete.obs")
+
+# Clean up data frame of correlations
+Z[lower.tri(Z, diag=TRUE)] = NA
+Z <- Z[,2:ncol(Z)]
+
+# Make data tabular
+Z = as.data.frame(as.table(Z))
+
+# Order from highest to lowest rho
+Z = Z[order(-abs(Z$Freq)),]
+
+# Remove NA values introduced earlier as half the correlation matric is repetitive
+Z <- Z[!is.na(Z$Freq)==T,]
+
+# Look at correlation results
+view(Z)
+```
+
+**This step requires manual inspection of correlated lipid names and strength of correlation**
+
+**Based on the results, select value above which lipids are considered 'duplicates'**
+
+```{r, message=FALSE}
+rho_cutoff <- 0.99961
+```
+
+```{r, message=FALSE}
+Z_rm = Z[Z$Freq > rho_cutoff,]  # filters based on rho cutoff
+Z_rm = as.vector(Z_rm$Var2)        # list of likely duplicate lipids (may not be all)
+print(Z_rm)                     # lipid(s) to be removed
+```
+
+**Manually look at 'Z_rm' output and confirm that the list reflects lipids to be removed. Compare to 'Z' and edit 'Z_rm' as needed before proceeding.**
+
+```{r, message=FALSE}
+Y <- Y |> select(!Z_rm)
+
+rm(Z, rho_cutoff, Z_rm, used_data, completeness, Y_rm)
+```
+
+# 8. Add sample information
+
+View files in directory to identify the correct index for the sample info file.
+
+```{r}
+print(myfiles)  
+```
+
+**Select file number for .csv containing info on sample.**
+
+```{r, message = F}
+filenumber <- 3
+```
+
+```{r, message = F}
+loadme <- paste0(mypath, "/", myfiles[filenumber])
+sample_info <- read_csv(paste0(loadme))     
+```
+
+**Input the tissue being processed below. Ensure spelling matches that in the sample_info dataframe.**
+
+```{r, message=FALSE}
+mytissue <- "Plasma"
+```
+
+The example is for plasma data only.
+
+```{r,message=FALSE}
+# Specify tissue of interest 
+sample_info <- sample_info |> filter(Tissue == mytissue)
+```
+
+```{r}
+# Ensure that the sample ID containing column is renamed to 'Sample' to match Y
+names(sample_info)[1] <- "Sample" # Check for any other sample id discrepancies and specify 
+```
+
+**Change 'as.numeric' to 'as.character' in the below code if the sample names are non-numeric**
+
+```{r, message=FALSE}
+# Ensure the Name variable is of the same 'type' - for this data, it is numeric
+sample_info$Sample <- as.numeric(sample_info$Sample)
+Y$Sample <- as.numeric(Y$Sample)
+```
+
+Merge data.
+
+```{r, message=FALSE}
+lipid_data <- merge(sample_info, Y, by = "Sample")
+```
+
+This is the initial output.
+
+# 9. Export data and session info
+**Choose file path to export the data**
+
+```{r}
+output_path <- "output/initial_data"
+```
+
+**Choose file name**
+
+```{r}
+output_name <- "plasma_cleaned_pos_initial"
+```
+
+Export file here
+
+```{r}
+write_csv(lipid_data, file = paste0(output_path, "/", output_name, ".csv")
+          )
+```
+
+```{r}
+rm(sample_info, mydata, lipid_data, Y)
+```
+
+**STOP**
+
+**Repeat this process for the negative ionization filed before proceeding to the next section**
+
+```{r}
+sessionInfo()
+```
+R version 4.3.0 (2023-04-21)
+Platform: x86_64-apple-darwin20 (64-bit)
+Running under: macOS Monterey 12.7
+
+Matrix products: default
+BLAS:   /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib 
+LAPACK: /Library/Frameworks/R.framework/Versions/4.3-x86_64/Resources/lib/libRlapack.dylib;  LAPACK version 3.11.0
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+time zone: America/New_York
+tzcode source: internal
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+ [1] Cairo_1.6-0     lubridate_1.9.2 forcats_1.0.0   stringr_1.5.0   dplyr_1.1.2     purrr_1.0.1    
+ [7] readr_2.1.4     tidyr_1.3.0     tibble_3.2.1    ggplot2_3.4.2   tidyverse_2.0.0
+
+loaded via a namespace (and not attached):
+ [1] gtable_0.3.3     compiler_4.3.0   tidyselect_1.2.0 scales_1.2.1     yaml_2.3.7      
+ [6] fastmap_1.1.1    R6_2.5.1         generics_0.1.3   knitr_1.43       munsell_0.5.0   
+[11] pillar_1.9.0     tzdb_0.4.0       rlang_1.1.1      utf8_1.2.3       stringi_1.7.12  
+[16] xfun_0.39        timechange_0.2.0 cli_3.6.1        withr_2.5.0      magrittr_2.0.3  
+[21] digest_0.6.31    grid_4.3.0       rstudioapi_0.14  hms_1.1.3        lifecycle_1.0.3 
+[26] vctrs_0.6.2      evaluate_0.21    glue_1.6.2       fansi_1.0.4      colorspace_2.1-0
+[31] rmarkdown_2.21   tools_4.3.0      pkgconfig_2.0.3  htmltools_0.5.5 
