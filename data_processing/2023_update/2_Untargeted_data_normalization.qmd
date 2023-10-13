@@ -1,5 +1,5 @@
 ---
-title: "Simcox Lab Untargeted Data Integration and Normalization"
+title: "Simcox Lab Untargeted Lipidomics Data Normalization"
 author: "Raghav Jain"
 format: html
 editor: visual
@@ -132,21 +132,23 @@ It is highly recommended to look at outputted files for anomalies before continu
 
 # 5. Internal standard normalization
 
-We are reporting in molar units. These calculations must be done by the user based on their experimental design. 
+We are reporting in molar units. These calculations must be done by the user based on their experimental design.
 
-Additionally, this script is for data in which all positive ionization injections were run at the same dilution (commonly 15-40X based on sample type), and all negative ionization injections were undiluted. If negative ionization injections was diluted (say 2X), the pmol_inj_neg column in 'standards_info' should reflect how much would have been injected if it had been an undiluted injection. 
+Additionally, this script is for data in which all positive ionization injections were run at the same dilution (commonly 15-40X based on sample type), and all negative ionization injections were undiluted. If negative ionization injections was diluted (say 2X), the pmol_inj_neg column in 'standards_info' should reflect how much would have been injected if it had been an undiluted injection.
 
 There are two important files here. The first contains information on all internal standards in the analysis. This is the 'standards_info.csv' that was already loaded. It is vital to:
 
-1. Double check that all IS are present in that file.  
-2. Ensure that the pmol injected in an undiluted injection is present (here, this is in the pmol_inj_neg column).
+1.  Double check that all IS are present in that file.\
+2.  Ensure that the pmol injected in an undiluted injection is present (here, this is in the pmol_inj_neg column).
 
-Next, an additional excel sheet is loaded in with two sheets. 
+Next, an additional excel sheet is loaded in with two sheets.
+
 ```{r}
 pos_norm_key <- read_xlsx("raw_data/normalization_info.xlsx", sheet = 1)
 neg_norm_key <- read_xlsx("raw_data/normalization_info.xlsx", sheet = 2)
 ```
-This file should contain the name of all lipid classes present in the analysis. If any lipids in the analysis are not represented, add them to the excel sheet. In doing this, ensure that the abbreviation in the 'Regex' column starts with a carrot (^) followed by the first few letters of the lipid class that distinguish it from any other lipid present in the analysis. 
+
+This file should contain the name of all lipid classes present in the analysis. If any lipids in the analysis are not represented, add them to the excel sheet. In doing this, ensure that the abbreviation in the 'Regex' column starts with a carrot (\^) followed by the first few letters of the lipid class that distinguish it from any other lipid present in the analysis.
 
 To test if the 'Regex' code is appropriate, use the following code to determine if the desired lipids are extracted from the dataset (and no extra lipids). As an example, the letters to extract BMP, but not HBMP from positive mode is given, and FA/FAHFA in negative mode are given.
 
@@ -155,11 +157,13 @@ pos_data |> select(starts_with("^BMP"))
 
 neg_data |> select(starts_with("^FA"))
 ```
-Note that it is possible to extract FA but not FAHFA if different IS are to be used for each of those classes. To do this, the regex language surrounding the letters must be changed for FA (from `^FA` to `\bFA\b`; FAHFA could be `^FAHFA`). To understand this, I recommend looking up regex codes. 
+
+Note that it is possible to extract FA but not FAHFA if different IS are to be used for each of those classes. To do this, the regex language surrounding the letters must be changed for FA (from `^FA` to `\bFA\b`; FAHFA could be `^FAHFA`). To understand this, I recommend looking up regex codes.
 
 Finally, verify that the desired IS to normalize a given lipid class is listed in the 'Standard' column. Again, the name of the IS must directly match the variable name in the positive and negative mode data that was collected.
 
 This code is preparing data frames for normalization.
+
 ```{r}
 pos_norm <- merge(pos_norm_key, my_IS, by = "IS_abbreviation", all = T)
 neg_norm <- merge(neg_norm_key, my_IS, by = "IS_abbreviation", all = T)
@@ -210,6 +214,7 @@ neg_data <- merge(neg_data, neg_IS, by = "Sample")
 ```
 
 Positive mode normalization. If all steps were followed above, then this should work without issues.
+
 ```{r}
 for (i in names(pos_IS)[-1]) {
   temp <- pos_norm |> filter(Standard.x %in% i)
@@ -228,7 +233,8 @@ for (i in names(pos_IS)[-1]) {
 }
 ```
 
-Negative mode normalization. 
+Negative mode normalization.
+
 ```{r}
 for (i in names(neg_IS)[-1]) {
   temp <- neg_norm |> filter(Standard.x %in% i)
@@ -246,10 +252,13 @@ for (i in names(neg_IS)[-1]) {
                          ] * neg_data[,i]
 }
 ```
+
 The data is now in pmol units.
 
 # 6. Material normalization and cleanup
+
 Remove IS variables from the data frames.
+
 ```{r}
 pos_data <- pos_data |>
   select(-any_of(IS_name))
@@ -258,9 +267,8 @@ neg_data <- neg_data |>
   select(-any_of(IS_name))
 ```
 
-Normalize to starting material (uL plasma or mg tissue)
-**The first lipid data column and weight/volume column should be specified based on the dataset.**
-This code is written so that the last column of the dataset is the final lipid column. 
+Normalize to starting material (uL plasma or mg tissue) **The first lipid data column and weight/volume column should be specified based on the dataset.** This code is written so that the last column of the dataset is the final lipid column.
+
 ```{r}
 # index of first lipid column
 first = 6
@@ -271,10 +279,11 @@ tonorm = 5
 pos_data[,first:ncol(pos_data)] <- pos_data[,first:ncol(pos_data)]/pos_data[,tonorm]
 neg_data[,first:ncol(neg_data)] <- neg_data[,first:ncol(neg_data)]/neg_data[,tonorm]
 ```
+
 For this example, the final units are pmol lipid/uL plasma. This is the same as nmol/mL or umol/L = uM. Note: if this code is run twice, you will get the wrong results. Only run it once.
 
-
 # 7. Output normalized data and session info
+
 ```{r}
 write_csv(pos_data, file = "output/final_curated/plasma_pos_uM.csv")
 
@@ -286,36 +295,23 @@ rm(list = ls())
 sessionInfo()
 ```
 
-R version 4.3.0 (2023-04-21)
-Platform: x86_64-apple-darwin20 (64-bit)
-Running under: macOS Monterey 12.7
+R version 4.3.0 (2023-04-21) Platform: x86_64-apple-darwin20 (64-bit) Running under: macOS Monterey 12.7
 
-Matrix products: default
-BLAS:   /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib 
-LAPACK: /Library/Frameworks/R.framework/Versions/4.3-x86_64/Resources/lib/libRlapack.dylib;  LAPACK version 3.11.0
+Matrix products: default BLAS: /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib LAPACK: /Library/Frameworks/R.framework/Versions/4.3-x86_64/Resources/lib/libRlapack.dylib; LAPACK version 3.11.0
 
-locale:
-[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+locale: \[1\] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
 
-time zone: America/New_York
-tzcode source: internal
+time zone: America/New_York tzcode source: internal
 
-attached base packages:
-[1] stats     graphics  grDevices utils     datasets  methods   base     
+attached base packages: \[1\] stats graphics grDevices utils datasets methods base
 
-other attached packages:
- [1] Cairo_1.6-0     readxl_1.4.2    lubridate_1.9.2 forcats_1.0.0   stringr_1.5.0   dplyr_1.1.2    
- [7] purrr_1.0.1     readr_2.1.4     tidyr_1.3.0     tibble_3.2.1    ggplot2_3.4.2   tidyverse_2.0.0
+other attached packages: \[1\] Cairo_1.6-0 readxl_1.4.2 lubridate_1.9.2 forcats_1.0.0 stringr_1.5.0 dplyr_1.1.2\
+\[7\] purrr_1.0.1 readr_2.1.4 tidyr_1.3.0 tibble_3.2.1 ggplot2_3.4.2 tidyverse_2.0.0
 
-loaded via a namespace (and not attached):
- [1] utf8_1.2.3       generics_0.1.3   stringi_1.7.12   hms_1.1.3        digest_0.6.31   
- [6] magrittr_2.0.3   evaluate_0.21    grid_4.3.0       timechange_0.2.0 fastmap_1.1.1   
-[11] cellranger_1.1.0 fansi_1.0.4      scales_1.2.1     cli_3.6.1        rlang_1.1.1     
-[16] crayon_1.5.2     bit64_4.0.5      munsell_0.5.0    yaml_2.3.7       withr_2.5.0     
-[21] tools_4.3.0      parallel_4.3.0   tzdb_0.4.0       colorspace_2.1-0 vctrs_0.6.2     
-[26] R6_2.5.1         lifecycle_1.0.3  bit_4.0.5        vroom_1.6.3      pkgconfig_2.0.3 
-[31] pillar_1.9.0     gtable_0.3.3     glue_1.6.2       xfun_0.39        tidyselect_1.2.0
-[36] rstudioapi_0.14  knitr_1.43       farver_2.1.1     htmltools_0.5.5  rmarkdown_2.21  
-[41] labeling_0.4.2   compiler_4.3.0  
-
-
+loaded via a namespace (and not attached): \[1\] utf8_1.2.3 generics_0.1.3 stringi_1.7.12 hms_1.1.3 digest_0.6.31\
+\[6\] magrittr_2.0.3 evaluate_0.21 grid_4.3.0 timechange_0.2.0 fastmap_1.1.1\
+\[11\] cellranger_1.1.0 fansi_1.0.4 scales_1.2.1 cli_3.6.1 rlang_1.1.1\
+\[16\] crayon_1.5.2 bit64_4.0.5 munsell_0.5.0 yaml_2.3.7 withr_2.5.0\
+\[21\] tools_4.3.0 parallel_4.3.0 tzdb_0.4.0 colorspace_2.1-0 vctrs_0.6.2\
+\[26\] R6_2.5.1 lifecycle_1.0.3 bit_4.0.5 vroom_1.6.3 pkgconfig_2.0.3 \[31\] pillar_1.9.0 gtable_0.3.3 glue_1.6.2 xfun_0.39 tidyselect_1.2.0 \[36\] rstudioapi_0.14 knitr_1.43 farver_2.1.1 htmltools_0.5.5 rmarkdown_2.21\
+\[41\] labeling_0.4.2 compiler_4.3.0

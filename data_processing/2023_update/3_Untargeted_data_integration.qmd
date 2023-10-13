@@ -1,0 +1,197 @@
+---
+title: "Simcox Lab Untargeted Data Integration"
+author: "Raghav Jain"
+format: html
+editor: visual
+---
+
+# 1. Summary
+
+This code picks up where the second script ends. This code combines positive and negative ionization mode data, while only retaining one lipid for those identified in both modes.
+
+The code has been made freely available to the community by the Simcox Lab. Please contact the developer, Raghav Jain (**jainragh52\@gmail.com**) with any questions.
+
+## Code instructions
+
+Code has been written for file and variable naming as provided in the example. These details will need to be edited for new data sets.
+
+Please read instructions at the top of each code chunk as they will detail the information user must update in the code. Sections requiring user input will have **the text bolded like this.** If there are no instructions, the code chunk can be run immediately following the previous one.
+
+Line citations within the code chunks describe the purpose of the specific line of code.
+
+# 2. Install and load packages
+
+Run this code twice if the packages are being installed for the first time.
+
+```{r, message=FALSE}
+#| echo: false
+if(!require(tidyverse)){install.packages("tidyverse")}
+```
+
+# 3. Load processed data
+
+**Type the file path to the folder containing raw data below:**
+
+```{r, message = F}
+mypath <- "output/final_curated"
+```
+
+```{r, message = F}
+myfiles <- list.files(mypath)   
+print(myfiles)                                         # Lists data files within folder
+```
+
+**Input file index below.**
+
+The example as written is for plasma lipidomics data. Specify which file is positive and which is negative ionization data.
+
+```{r, message = F}
+filenumber_pos <- 3
+filenumber_neg <- 2
+```
+
+Load data.
+
+```{r, message = F}
+loadme <- paste0(mypath, "/", myfiles[filenumber_pos])
+pos_data <- read_csv(paste0(loadme))   
+
+loadme <- paste0(mypath, "/", myfiles[filenumber_neg])
+neg_data <- read_csv(paste0(loadme))   
+
+# Make sample names characters
+pos_data$Sample <- as.character(pos_data$Sample)
+neg_data$Sample <- as.character(neg_data$Sample)
+```
+
+# 4. Filter lipid duplicates measured in both positive and negative mode
+
+Some lipids are identified in both positive and negative ionization. This is most common with phospholipids. First, these common lipids must be identified. Typically, the common lipid with a lower signal from either the positive or negative list is dropped. This is done after manual curation and based on which prior knowledge that certain lipids ionize better in a given mode. The goal is to retain the 'duplicate' from whichever ionization resulted in better integration of the peak.
+
+**The first lipid data column and weight/volume column should be specified based on the dataset.**
+
+```{r}
+# index of first lipid column
+first = 6
+
+# Lipids identified in both modes
+shared <- intersect(names(pos_data)[first:ncol(pos_data)], 
+                    names(neg_data)[first:ncol(neg_data)])
+
+# These are lipid species present in both modes
+print(shared)
+```
+
+This code subsets lipids in both modes and compares the median of normalized lipid quantities.
+
+```{r}
+# subset 'shared lipids' from negative mode data set
+n_s <- neg_data |> select(shared)
+
+# subset 'shared lipids' from positive mode data set
+p_s <- pos_data |> select(shared)
+
+# Calculate median for shared lipids in both modes
+negMode = as.numeric()
+posMode = as.numeric()
+for (i in 1:ncol(n_s)){
+  negMode[i] = round(summary(n_s[[i]])[3],4)
+  posMode[i] = round(summary(p_s[[i]])[3],4)
+}
+
+# Compare semi-quantitative values side-by-side
+common <- cbind(colnames(n_s), negMode, posMode)
+common <- as_tibble(common)
+common[,2:3] <- sapply(common[,2:3], as.numeric)
+
+# This is the head-to-head comparison of values between negative and positive mode data
+view(common)
+```
+
+I highly recommend looking at this data frame to look for potential discrepancies in positive and negative mode data.
+
+**This code may, or may not, need to be altered** As written, duplicate lipids will be retained from the ionization mode witht the higher value. This may or may not be desired; individual edits may need to be made if alternative strategies need to be taken.
+
+```{r}
+NegHigh <- common$V1[common[[2]] > common[[3]]]  # higher intensity lipids in negative mode
+PosHigh <- common$V1[common[[3]] > common[[2]]]  # higher intensity lipids in positive mode
+```
+
+If needed, the following code can be used to remove a specific lipid, by name, from the NegHigh or PosHigh lists. NegHigh is the list of lipids that will be retained in negative but not positive mode, and PosHigh is the opposite.
+
+No manual changes were made for the example dataset.
+
+```{r}
+print(NegHigh)
+NegHigh <- NegHigh[NegHigh != "Cer_NS d18:1_22:0"]  # remove lipid from list by name
+NegHigh <- append(NegHigh, "Cer_NS d18:1_22:0")     # add lipid from list by name
+```
+
+```{r}
+# Remove the PosHigh lipids from the negative mode data
+neg_data <- neg_data |> select(-all_of(PosHigh))
+
+# Remove the NegHigh lipids from the positive mode data
+pos_data <- pos_data |> select(-all_of(NegHigh))
+
+# Double check no common variables remain (IS is fine)
+shared_test <- intersect(names(neg_data)[first:ncol(neg_data)], 
+                    names(pos_data[first:ncol(pos_data)]
+                          )
+                    )
+
+# There should not be any lipids here
+print(shared_test)
+```
+
+# 5. Final dataset merge
+
+This code should work without editing. However, make sure the 'pos_merge' data frame includes only the first column (Sample) witht he sample name or ID, and all columns with lipid data.
+
+```{r}
+# Final merged dataset
+pos_merge <- pos_data |> select(Sample, first:ncol(pos_data))
+
+Lipids_Final <- merge(neg_data, pos_merge, by = "Sample")
+
+# Arrange lipid columns alphabetically
+Lipids_Final <- Lipids_Final %>% 
+                  tibble %>% 
+                  select(colnames(Lipids_Final)[1:(first-1)], sort(colnames(.))
+                         )
+```
+
+Change NA values to 0. This is optional; it is also possible to impute values since NA implies not detected, which is different from 0.
+
+```{r}
+# Change NA values to 0
+Lipids_Final[is.na(Lipids_Final)] <- 0
+```
+
+# 6. Output data and session info
+
+```{r}
+write_csv(Lipids_Final, "output/final_curated/final_data_plasma_uM.csv")
+
+rm(list=ls())
+sessionInfo()
+```
+
+R version 4.3.0 (2023-04-21) Platform: x86_64-apple-darwin20 (64-bit) Running under: macOS Monterey 12.7
+
+Matrix products: default BLAS: /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib LAPACK: /Library/Frameworks/R.framework/Versions/4.3-x86_64/Resources/lib/libRlapack.dylib; LAPACK version 3.11.0
+
+locale: \[1\] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+time zone: America/New_York tzcode source: internal
+
+attached base packages: \[1\] stats graphics grDevices utils datasets methods base
+
+other attached packages: \[1\] lubridate_1.9.2 forcats_1.0.0 stringr_1.5.0 dplyr_1.1.2 purrr_1.0.1 readr_2.1.4\
+\[7\] tidyr_1.3.0 tibble_3.2.1 ggplot2_3.4.2 tidyverse_2.0.0
+
+loaded via a namespace (and not attached): \[1\] bit_4.0.5 gtable_0.3.3 compiler_4.3.0 crayon_1.5.2 tidyselect_1.2.0 \[6\] parallel_4.3.0 scales_1.2.1 R6_2.5.1 generics_0.1.3 knitr_1.43\
+\[11\] munsell_0.5.0 pillar_1.9.0 tzdb_0.4.0 rlang_1.1.1 utf8_1.2.3\
+\[16\] stringi_1.7.12 xfun_0.39 bit64_4.0.5 timechange_0.2.0 cli_3.6.1\
+\[21\] withr_2.5.0 magrittr_2.0.3 grid_4.3.0 vroom_1.6.3 rstudioapi_0.14 \[26\] hms_1.1.3 lifecycle_1.0.3 vctrs_0.6.2 glue_1.6.2 fansi_1.0.4\
+\[31\] colorspace_2.1-0 tools_4.3.0 pkgconfig_2.0.3
